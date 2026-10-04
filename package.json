@@ -14,7 +14,7 @@
     "video": "bun src/video.ts",
     "stream": "bun src/stream.ts",
     "test": "bun test",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "bun scripts/typecheck.ts",
     "format": "bunx oxfmt .",
     "format:check": " bunx oxfmt . --check",
     "lint": " bunx oxlint .",
