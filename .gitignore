@@ -1,0 +1,29 @@
+node_modules
+dist
+out
+*.log
+__pycache__
+
+# code coverage
+coverage
+*.lcov
+
+# caches
+.cache
+*.tsbuildinfo
+.eslintcache
+
+# env
+.env
+.env.local
+.env.*.local
+
+# editors
+.vscode
+.idea
+.DS_Store
+
+# scratch / partial yt-dlp downloads
+*.part
+
+.cline

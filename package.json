@@ -1,0 +1,38 @@
+{
+  "name": "bun-video-stream",
+  "private": true,
+  "author": "involvex",
+  "bin": {
+    "bun-stream": "src/index.ts",
+    "bunstreamer": "dist/bun-stream.exe"
+  },
+  "type": "module",
+  "module": "src/index.ts",
+  "scripts": {
+    "dev": "bun src/index.ts",
+    "build": "bun build --compile --outfile dist/bun-stream.exe src/index.ts",
+    "video": "bun src/video.ts",
+    "stream": "bun src/stream.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "format": "bunx oxfmt .",
+    "format:check": " bunx oxfmt . --check",
+    "lint": " bunx oxlint .",
+    "lint:fix": " bunx oxlint . --fix"
+  },
+  "dependencies": {
+    "@bun-win32/all": "^2.0.2",
+    "@bun-win32/core": "^2.0.1",
+    "@bun-win32/mfplat": "^2.0.1",
+    "@bun-win32/terminal": "^2.0.1",
+    "bun-win32": "^2.0.2",
+    "has-flag": "latest"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
