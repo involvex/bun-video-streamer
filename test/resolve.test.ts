@@ -48,12 +48,8 @@ describe("buildResolveArgs", () => {
   });
 
   test("a blank browser spec is dropped, not forwarded", () => {
-    expect(buildResolveArgs({ cookiesFromBrowser: "" })).not.toContain(
-      "--cookies-from-browser",
-    );
-    expect(buildResolveArgs({ cookiesFromBrowser: "   " })).not.toContain(
-      "--cookies-from-browser",
-    );
+    expect(buildResolveArgs({ cookiesFromBrowser: "" })).not.toContain("--cookies-from-browser");
+    expect(buildResolveArgs({ cookiesFromBrowser: "   " })).not.toContain("--cookies-from-browser");
   });
 
   test("browser spec and jar file combine when both are given", () => {
@@ -77,9 +73,7 @@ describe("buildResolveArgs", () => {
     // said "Requested format is not available" for a model who was live.
     const arms = DEFAULT_FORMAT_SELECTOR.split("/");
     expect(arms).toHaveLength(3);
-    expect(
-      arms.some((a) => a.includes("bestvideo") && a.includes("bestaudio")),
-    ).toBe(true);
+    expect(arms.some((a) => a.includes("bestvideo") && a.includes("bestaudio"))).toBe(true);
     // `best` alone must remain the LAST resort, never the first choice.
     expect(arms[arms.length - 1]).toBe("best");
   });
@@ -123,11 +117,7 @@ describe("normalizeTarget", () => {
     expect(normalizeTarget("chaturbate/iren_wagner")).toBe(
       "https://de.chaturbate.com/iren_wagner/",
     );
-    expect(normalizeTarget("twitch.tv/aidamoodi")).toBe(
-      "https://www.twitch.tv/aidamoodi",
-    );
-    expect(normalizeTarget("https://example.com/live.m3u8")).toBe(
-      "https://example.com/live.m3u8",
-    );
+    expect(normalizeTarget("twitch.tv/aidamoodi")).toBe("https://www.twitch.tv/aidamoodi");
+    expect(normalizeTarget("https://example.com/live.m3u8")).toBe("https://example.com/live.m3u8");
   });
 });

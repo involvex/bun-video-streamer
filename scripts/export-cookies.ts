@@ -47,9 +47,9 @@ ytdlp mode (default; broken on Chrome/Edge 127+ — see header):
   --check TARGET   after export, verify the jar resolves TARGET via yt-dlp -g
   --binary BIN     yt-dlp executable (default yt-dlp from PATH)
 
-cdp mode (for current Chrome; dedicated automation profile):
+cdp mode (for current Chrome/Edge; dedicated automation profile):
   --profile-dir D  Chrome --user-data-dir (default out/chrome-profile)
-  --chrome EXE     chrome executable (default: auto-detect, CHROME_PATH wins)
+  --chrome EXE     explicit browser executable
   --port N         remote-debugging port (default 19327)
   --url URL        page to visit before export, so its cookies exist (repeatable)
   --wait S         seconds to let pages settle before export (default 8)
@@ -279,7 +279,9 @@ interface CdpTarget {
 async function newPage(port: number, url: string): Promise<CdpTarget> {
   const res = await fetch(
     `http://127.0.0.1:${port}/json/new?${encodeURIComponent(url)}`,
-    { method: "PUT" },
+    {
+      method: "PUT",
+    },
   );
   if (!res.ok) fail(`could not open ${url} (HTTP ${res.status})`);
   return (await res.json()) as CdpTarget;

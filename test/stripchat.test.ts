@@ -51,12 +51,8 @@ const htmlOf = (data: unknown): string =>
 describe("isStripchatModelUrl", () => {
   test("matches model URLs incl. locale subdomains", () => {
     expect(isStripchatModelUrl("https://stripchat.com/ErisVesper")).toBe(true);
-    expect(isStripchatModelUrl("https://www.stripchat.com/ErisVesper/")).toBe(
-      true,
-    );
-    expect(isStripchatModelUrl("https://de.stripchat.com/ErisVesper")).toBe(
-      true,
-    );
+    expect(isStripchatModelUrl("https://www.stripchat.com/ErisVesper/")).toBe(true);
+    expect(isStripchatModelUrl("https://de.stripchat.com/ErisVesper")).toBe(true);
   });
 
   test("rejects other sites and bare paths", () => {
@@ -73,15 +69,9 @@ describe("extractPreloadedState", () => {
   });
 
   test("returns null when absent or broken", () => {
-    expect(
-      extractPreloadedState("<html><body>shell, no state</body></html>"),
-    ).toBeNull();
-    expect(
-      extractPreloadedState("window.__PRELOADED_STATE__ = {oops"),
-    ).toBeNull();
-    expect(
-      extractPreloadedState("window.__PRELOADED_STATE__ = null;"),
-    ).toBeNull();
+    expect(extractPreloadedState("<html><body>shell, no state</body></html>")).toBeNull();
+    expect(extractPreloadedState("window.__PRELOADED_STATE__ = {oops")).toBeNull();
+    expect(extractPreloadedState("window.__PRELOADED_STATE__ = null;")).toBeNull();
   });
 });
 
@@ -96,9 +86,7 @@ describe("stripchatLiveFromState", () => {
 
   test("no show object at all is live", () => {
     const { show: _dropped, ...rest } = state().viewCam;
-    expect(
-      stripchatLiveFromState({ ...state(), viewCam: rest }, NOW),
-    ).not.toBeNull();
+    expect(stripchatLiveFromState({ ...state(), viewCam: rest }, NOW)).not.toBeNull();
   });
 
   test("a running show without endedAt stays private", () => {
@@ -115,16 +103,10 @@ describe("stripchatLiveFromState", () => {
 
   test("offline or non-public models are not live", () => {
     expect(
-      stripchatLiveFromState(
-        state({ model: { status: "public", isLive: false } }),
-        NOW,
-      ),
+      stripchatLiveFromState(state({ model: { status: "public", isLive: false } }), NOW),
     ).toBeNull();
     expect(
-      stripchatLiveFromState(
-        state({ model: { status: "away", isLive: true } }),
-        NOW,
-      ),
+      stripchatLiveFromState(state({ model: { status: "away", isLive: true } }), NOW),
     ).toBeNull();
   });
 
@@ -138,8 +120,7 @@ describe("stripchatLiveFromState", () => {
 
   test("falls back to the default template when the page has none", () => {
     const s = state();
-    delete (s.configV3.initialCommon as Record<string, unknown>)
-      .hlsStreamUrlTemplate;
+    delete (s.configV3.initialCommon as Record<string, unknown>).hlsStreamUrlTemplate;
     const live = stripchatLiveFromState(s, NOW);
     expect(live!.template).toContain("{cdnHost}");
     expect(live!.template).toContain("{streamName}");
@@ -151,24 +132,17 @@ describe("buildStripchatHlsUrls", () => {
     const urls = buildStripchatHlsUrls({
       streamName: "abcdefghi",
       modelId: 1234567,
-      template:
-        "https://edge-hls.{cdnHost}/hls/{streamName}/master/{streamName}{suffix}.m3u8",
+      template: "https://edge-hls.{cdnHost}/hls/{streamName}/master/{streamName}{suffix}.m3u8",
       hosts: ["doppiocdn.media", "doppiocdn.com"],
     });
     expect(urls[0]).toBe(
       "https://edge-hls.doppiocdn.media/hls/abcdefghi/master/abcdefghi_auto.m3u8",
     );
-    expect(urls).toContain(
-      "https://edge-hls.doppiocdn.media/hls/1234567/master/1234567_auto.m3u8",
-    );
+    expect(urls).toContain("https://edge-hls.doppiocdn.media/hls/1234567/master/1234567_auto.m3u8");
     expect(
-      urls.indexOf(
-        "https://edge-hls.doppiocdn.com/hls/abcdefghi/master/abcdefghi_auto.m3u8",
-      ),
+      urls.indexOf("https://edge-hls.doppiocdn.com/hls/abcdefghi/master/abcdefghi_auto.m3u8"),
     ).toBeLessThan(
-      urls.indexOf(
-        "https://edge-hls.doppiocdn.media/hls/1234567/master/1234567_auto.m3u8",
-      ),
+      urls.indexOf("https://edge-hls.doppiocdn.media/hls/1234567/master/1234567_auto.m3u8"),
     );
   });
 });
@@ -194,23 +168,16 @@ describe("parseHlsVariants", () => {
       width: 1920,
       height: 1080,
     });
-    expect(vs[1]!.uri).toBe(
-      "https://edge-hls.doppiocdn.media/hls/s/master/720p.m3u8",
-    );
+    expect(vs[1]!.uri).toBe("https://edge-hls.doppiocdn.media/hls/s/master/720p.m3u8");
   });
 
   test("media playlists yield no variants", () => {
-    expect(
-      parseHlsVariants("#EXTM3U\n#EXTINF:6.0,\nseg.ts\n", "https://x/y.m3u8"),
-    ).toEqual([]);
+    expect(parseHlsVariants("#EXTM3U\n#EXTINF:6.0,\nseg.ts\n", "https://x/y.m3u8")).toEqual([]);
   });
 });
 
 describe("selectCappedVariant", () => {
-  const vs = parseHlsVariants(
-    MASTER,
-    "https://edge-hls.doppiocdn.media/hls/s/master/s_auto.m3u8",
-  );
+  const vs = parseHlsVariants(MASTER, "https://edge-hls.doppiocdn.media/hls/s/master/s_auto.m3u8");
 
   test("picks the best rendition at or below 720p, not the 1080p top", () => {
     const v = selectCappedVariant(vs, 720)!;

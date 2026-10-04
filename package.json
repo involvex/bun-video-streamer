@@ -1,5 +1,5 @@
 {
-  "name": "bun-video-stream",
+  "name": "@involvex/bun-video-stream",
   "private": true,
   "author": "involvex",
   "bin": {

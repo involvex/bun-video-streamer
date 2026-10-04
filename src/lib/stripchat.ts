@@ -80,9 +80,7 @@ function extractBalanced(source: string, start: number): string | null {
  * Parse `window.__PRELOADED_STATE__ = {...}` out of model-page HTML.
  * Returns the state object, or null when absent/unparseable — never throws.
  */
-export function extractPreloadedState(
-  html: string,
-): Record<string, any> | null {
+export function extractPreloadedState(html: string): Record<string, any> | null {
   const m = PRELOADED_RE.exec(html);
   if (m === null || m.index === undefined) return null;
   const brace = html.indexOf("{", m.index);
@@ -91,9 +89,7 @@ export function extractPreloadedState(
   if (raw === null) return null;
   try {
     const data: unknown = JSON.parse(raw);
-    return typeof data === "object" && data !== null
-      ? (data as Record<string, any>)
-      : null;
+    return typeof data === "object" && data !== null ? (data as Record<string, any>) : null;
   } catch {
     return null;
   }
@@ -133,8 +129,7 @@ export function stripchatLiveFromState(
   const show: unknown = vc.show;
   if (typeof show === "object" && show !== null && !Array.isArray(show)) {
     const endedAt: unknown = (show as Record<string, any>).endedAt;
-    const endedMs =
-      typeof endedAt === "string" && endedAt !== "" ? Date.parse(endedAt) : NaN;
+    const endedMs = typeof endedAt === "string" && endedAt !== "" ? Date.parse(endedAt) : NaN;
     // No (parseable) end timestamp → the show is running → really private.
     if (!Number.isFinite(endedMs) || endedMs > nowMs) return null;
   }
@@ -148,25 +143,21 @@ export function stripchatLiveFromState(
       ? (initialCommon as Record<string, any>)
       : {};
   const template =
-    typeof ic.hlsStreamUrlTemplate === "string" &&
-    ic.hlsStreamUrlTemplate !== ""
+    typeof ic.hlsStreamUrlTemplate === "string" && ic.hlsStreamUrlTemplate !== ""
       ? ic.hlsStreamUrlTemplate
       : DEFAULT_HLS_TEMPLATE;
   const hosts: string[] = [];
-  if (typeof ic.hlsStreamHost === "string" && ic.hlsStreamHost !== "")
-    hosts.push(ic.hlsStreamHost);
+  if (typeof ic.hlsStreamHost === "string" && ic.hlsStreamHost !== "") hosts.push(ic.hlsStreamHost);
   const map: unknown = ic.hlsStreamHosts;
   if (typeof map === "object" && map !== null) {
     for (const h of Object.values(map as Record<string, unknown>)) {
-      if (typeof h === "string" && h !== "" && !hosts.includes(h))
-        hosts.push(h);
+      if (typeof h === "string" && h !== "" && !hosts.includes(h)) hosts.push(h);
     }
   }
   if (hosts.length === 0) return null;
 
   const rawId: unknown = (model as Record<string, any>).id;
-  const modelId =
-    typeof rawId === "number" && Number.isFinite(rawId) ? rawId : undefined;
+  const modelId = typeof rawId === "number" && Number.isFinite(rawId) ? rawId : undefined;
   return { streamName, modelId, template, hosts };
 }
 
@@ -190,9 +181,7 @@ export function buildStripchatHlsUrls(live: StripchatLive): string[] {
   }
   if (live.modelId !== undefined) {
     for (const host of live.hosts) {
-      push(
-        `https://edge-hls.${host}/hls/${live.modelId}/master/${live.modelId}_auto.m3u8`,
-      );
+      push(`https://edge-hls.${host}/hls/${live.modelId}/master/${live.modelId}_auto.m3u8`);
     }
   }
   return urls;
@@ -222,10 +211,7 @@ export interface HlsVariant {
  * Parse `#EXT-X-STREAM-INF` variants out of a master playlist, resolving relative
  * URIs against the master URL. Pure. Returns [] for media playlists (no variants).
  */
-export function parseHlsVariants(
-  masterText: string,
-  baseUrl: string,
-): HlsVariant[] {
+export function parseHlsVariants(masterText: string, baseUrl: string): HlsVariant[] {
   const lines = masterText.split("\n");
   const out: HlsVariant[] = [];
   for (let i = 0; i < lines.length; i++) {
@@ -257,10 +243,7 @@ export function parseHlsVariants(
  * big one. Variants WITHOUT resolution info are only used when nothing parsed
  * better: unknown size must not outrank a known-good capped pick.
  */
-export function selectCappedVariant(
-  variants: HlsVariant[],
-  maxHeight = 720,
-): HlsVariant | null {
+export function selectCappedVariant(variants: HlsVariant[], maxHeight = 720): HlsVariant | null {
   const known = variants.filter((v) => v.height !== null);
   const capped = known.filter((v) => (v.height as number) <= maxHeight);
   const pool = capped.length > 0 ? capped : known;
@@ -312,10 +295,7 @@ export async function tryStripchatFallback(
         // Master with renditions: descend to the capped variant so ffmpeg never
         // chews the top 1080p+ rendition on a thin connection. The variant is
         // probed the same way; a media playlist (no variants) is used as-is.
-        const variant = selectCappedVariant(
-          parseHlsVariants(master, url),
-          maxHeight,
-        );
+        const variant = selectCappedVariant(parseHlsVariants(master, url), maxHeight);
         if (variant === null) return { video: url };
         try {
           const vres = await fetch(variant.uri, {

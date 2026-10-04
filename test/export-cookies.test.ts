@@ -12,9 +12,7 @@ describe("buildBrowserSpec", () => {
   });
 
   test("embedded profile wins over --profile", () => {
-    expect(buildBrowserSpec("chrome:Profile 1", "Default")).toBe(
-      "chrome:Profile 1",
-    );
+    expect(buildBrowserSpec("chrome:Profile 1", "Default")).toBe("chrome:Profile 1");
   });
 
   test("blank browser stays blank", () => {
@@ -37,9 +35,7 @@ describe("toNetscapeJar", () => {
     ]);
     const lines = jar.split("\n");
     expect(lines[0]).toBe("# Netscape HTTP Cookie File");
-    expect(lines[1]).toBe(
-      ".chaturbate.com\tTRUE\t/\tTRUE\t1893456000\tsession\tabc",
-    );
+    expect(lines[1]).toBe(".chaturbate.com\tTRUE\t/\tTRUE\t1893456000\tsession\tabc");
   });
 
   test("host-only domains get FALSE and session cookies get expiry 0", () => {

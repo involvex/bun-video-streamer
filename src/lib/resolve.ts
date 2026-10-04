@@ -85,8 +85,7 @@ function pathOf(url: string): string {
   const withoutFragment = url.split("#")[0] ?? "";
   const withoutQuery = withoutFragment.split("?")[0] ?? "";
   const schemeEnd = withoutQuery.indexOf("://");
-  const afterScheme =
-    schemeEnd === -1 ? withoutQuery : withoutQuery.slice(schemeEnd + 3);
+  const afterScheme = schemeEnd === -1 ? withoutQuery : withoutQuery.slice(schemeEnd + 3);
   const slash = afterScheme.indexOf("/");
   return slash === -1 ? afterScheme : afterScheme.slice(slash);
 }
@@ -213,9 +212,7 @@ export function cleanYtdlpMessage(stderr: string): string {
     .map((line) => line.trim())
     .filter((line) => line !== "");
   for (const line of lines) {
-    const match = /^ERROR:\s*(?:\[[^\]]*\]\s*)?(?:[^:\s]+:\s*)?(.*)$/i.exec(
-      line,
-    );
+    const match = /^ERROR:\s*(?:\[[^\]]*\]\s*)?(?:[^:\s]+:\s*)?(.*)$/i.exec(line);
     const detail = (match?.[1] ?? "").trim();
     if (detail !== "") return detail;
   }
@@ -235,8 +232,7 @@ export function classifyFailure(stderr: string): ResolveErrorKind {
   const haystack = stripAnsi(stderr).toLowerCase();
   if (GEO_PATTERNS.some((pattern) => pattern.test(haystack))) return "geo";
   if (AUTH_PATTERNS.some((pattern) => pattern.test(haystack))) return "auth";
-  if (OFFLINE_PATTERNS.some((pattern) => pattern.test(haystack)))
-    return "offline";
+  if (OFFLINE_PATTERNS.some((pattern) => pattern.test(haystack))) return "offline";
   return "unknown";
 }
 
@@ -276,8 +272,7 @@ function humanSentence(init: ResolveErrorInit): string {
     case "geo":
       return `${label} is geo-blocked in this region${because}`;
     default: {
-      const code =
-        init.exitCode === null ? "" : ` (yt-dlp exit ${init.exitCode})`;
+      const code = init.exitCode === null ? "" : ` (yt-dlp exit ${init.exitCode})`;
       return `could not resolve ${label}${code}${because}`;
     }
   }
@@ -324,9 +319,7 @@ export function isResolveError(error: unknown): error is ResolveError {
   return error instanceof ResolveError;
 }
 
-export function isResolveAbortedError(
-  error: unknown,
-): error is ResolveAbortedError {
+export function isResolveAbortedError(error: unknown): error is ResolveAbortedError {
   return error instanceof ResolveAbortedError;
 }
 
@@ -350,8 +343,7 @@ export const DEFAULT_YTDLP_BINARY = "yt-dlp";
  * The final bare `best` is the last resort so a site with only low/unlabelled variants
  * still resolves instead of erroring.
  */
-export const DEFAULT_FORMAT_SELECTOR =
-  "best[height<=720]/bestvideo[height<=720]+bestaudio/best";
+export const DEFAULT_FORMAT_SELECTOR = "best[height<=720]/bestvideo[height<=720]+bestaudio/best";
 
 export interface ResolveOptions {
   /** Cancels the in-flight invocation; the child is killed, never orphaned. */
@@ -394,8 +386,7 @@ export interface ResolveOptions {
 function cookieArgs(opts: ResolveOptions): string[] {
   const out: string[] = [];
   const browser = opts.cookiesFromBrowser?.trim();
-  if (browser !== undefined && browser !== "")
-    out.push("--cookies-from-browser", browser);
+  if (browser !== undefined && browser !== "") out.push("--cookies-from-browser", browser);
   const jar = opts.cookiesFile?.trim();
   if (jar !== undefined && jar !== "") out.push("--cookies", jar);
   return out;
@@ -411,13 +402,7 @@ function cookieArgs(opts: ResolveOptions): string[] {
  * "ERROR: unable to download webpage".
  */
 export function buildResolveArgs(opts: ResolveOptions = {}): string[] {
-  return [
-    "-g",
-    "--no-playlist",
-    ...cookieArgs(opts),
-    "-f",
-    DEFAULT_FORMAT_SELECTOR,
-  ];
+  return ["-g", "--no-playlist", ...cookieArgs(opts), "-f", DEFAULT_FORMAT_SELECTOR];
 }
 
 interface YtdlpRun {
@@ -429,10 +414,7 @@ interface YtdlpRun {
 /** `signal.reason` when it carries one, so the caller's own message survives. */
 function abortError(signal: AbortSignal): ResolveAbortedError {
   const reason: unknown = signal.reason;
-  const message =
-    reason instanceof Error && reason.message !== ""
-      ? reason.message
-      : "aborted";
+  const message = reason instanceof Error && reason.message !== "" ? reason.message : "aborted";
   return reason instanceof Error
     ? new ResolveAbortedError(message, { cause: reason })
     : new ResolveAbortedError(message);
@@ -453,10 +435,7 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
  * (so the handle is reaped and cannot outlive the call) but not awaited, so cancelling
  * never blocks on a process that may be wedged in a socket read.
  */
-async function runYtdlp(
-  args: string[],
-  opts: ResolveOptions,
-): Promise<YtdlpRun> {
+async function runYtdlp(args: string[], opts: ResolveOptions): Promise<YtdlpRun> {
   const signal = opts.signal;
   throwIfAborted(signal);
 
@@ -515,15 +494,11 @@ export function parseSourceUrls(stdout: string): StreamSources | null {
   // A second URL is only trustworthy as the AUDIO track if it differs from the first;
   // a duplicate line means the extractor echoed the same muxed URL twice.
   const second = urls[1];
-  return second === undefined || second === video
-    ? { video }
-    : { video, audio: second };
+  return second === undefined || second === video ? { video } : { video, audio: second };
 }
 
 function errorText(error: unknown): string {
-  return error instanceof Error && error.message !== ""
-    ? error.message
-    : String(error);
+  return error instanceof Error && error.message !== "" ? error.message : String(error);
 }
 
 /** yt-dlp missing from PATH, ENOENT, EPERM… anything that went wrong before it could talk. */
@@ -763,8 +738,7 @@ function parseFormatRow(line: string): FormatRow | null {
     if (SHAPE_RESOLUTION.test(head)) {
       resolution = head;
       const maybeFps = rest[1];
-      if (maybeFps !== undefined && SHAPE_FPS.test(maybeFps))
-        fps = Number(maybeFps);
+      if (maybeFps !== undefined && SHAPE_FPS.test(maybeFps)) fps = Number(maybeFps);
     } else if (SHAPE_FPS.test(head)) {
       fps = Number(head); // RESOLUTION column hidden by hide_empty
     } else {
@@ -834,10 +808,7 @@ export function parseFormatRows(output: string): FormatRow[] {
  *
  * @throws {ResolveError} classified the same way as `resolveStreamSources`.
  */
-export async function listFormats(
-  target: string,
-  opts: ResolveOptions = {},
-): Promise<FormatRow[]> {
+export async function listFormats(target: string, opts: ResolveOptions = {}): Promise<FormatRow[]> {
   const normalized = normalizeTarget(target);
   if (normalized === "") {
     throw new ResolveError({ kind: "unknown", target, detail: "empty target" });

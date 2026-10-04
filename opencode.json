@@ -3,9 +3,7 @@
     "servers": {
       "bunwright": {
         "type": "local",
-        "command": [
-          "bunwright-mcp"
-        ]
+        "command": ["bunwright-mcp"]
       }
     }
   }
