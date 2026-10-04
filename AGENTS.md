@@ -140,6 +140,30 @@ format is not available` for a model who is live. The selector is a three-arm
     needs nothing. Do NOT pass the jar to ffmpeg's `-cookies`: that option takes
     newline-delimited `Set-Cookie` header **values**, not a file, so a path there is
     silently ignored.
+14. **Chrome 127+ broke `yt-dlp --cookies-from-browser chrome`.** App-Bound encryption
+    makes it fail with `Failed to decrypt with DPAPI` (yt-dlp#10927, still open —
+    verified on Chrome 154). Firefox still works natively. For Chrome use the dedicated
+    automation profile instead: `bun run cookies --via cdp --url <site> --login`
+    (headed, log in once), then `... --via cdp` headless re-exports anytime via
+    `Network.getAllCookies` — Chrome decrypts its own store, so App-Bound is
+    irrelevant. Never point `--profile-dir` at the real Chrome profile (locked), and
+    always pass an ABSOLUTE `--user-data-dir`: a relative one makes Chrome pop up
+    "kann im folgenden Datenverzeichnis weder lesen noch schreiben". `stream.ts` also
+    accepts `--cookies-from-browser <spec>` directly (same Chrome limitation applies).
+15. **Stripchat leaves its last ended show in the page state.** yt-dlp reads any
+    `viewCam.show` dict as "Model is in a private show", but the object survives the
+    show (`endedAt` hours ago) while the model is already `status: public`,
+    `isLive: true` again — and logged-in pages on the locale subdomain
+    (`de.stripchat.com`) ship NO preloaded state ("Unable to extract data"). So
+    `resolveStreamSources` falls back to `src/lib/stripchat.ts` when yt-dlp fails on a
+    Stripchat URL: anonymous page fetch (browser-like `Accept` headers — bare `fetch`
+    gets HTTP 406), believe the MODEL flags over a stale `show.endedAt`, build the HLS
+    master from the page's own `configV3.initialCommon` template and probe candidates
+    (200 + `#EXTM3U`) before handing one out. The master is ABR, so the fallback
+    descends into the best variant at or below 720p (same cap as yt-dlp's
+    `best[height<=720]`) — handing ffmpeg the uncapped top rendition stalls thin
+    connections while Chaturbate stays smooth. Inconclusive → the ORIGINAL yt-dlp error
+    is rethrown, never a guessed URL. `test/stripchat.test.ts` guards the shapes.
 
 ## A/V sync is deliberately absent for streams
 

@@ -111,6 +111,7 @@ export function firstTarget(argv: string[]): string | undefined {
 /** Flags that consume the next token, so that token is never mistaken for the target. */
 const VALUE_FLAGS = new Set([
   "cookies",
+  "cookies-from-browser",
   "cookie",
   "header",
   "headers",

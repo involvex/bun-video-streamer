@@ -33,7 +33,13 @@ import {
   detectConsoleSize,
   runText,
 } from "@bun-win32/terminal";
-import { BLACK, ensureLut, releaseLut, renderFrame, type RenderMode } from "./lib/render";
+import {
+  BLACK,
+  ensureLut,
+  releaseLut,
+  renderFrame,
+  type RenderMode,
+} from "./lib/render";
 import { closeWaveOutLib, createWaveOut, type WaveOut } from "./lib/waveout";
 import { looksLive, MediaClient } from "./lib/media";
 import {
@@ -60,6 +66,8 @@ Options:
       --fps N        render frame rate (default 30)
       --no-audio     video only
       --cookies P    Netscape cookie jar for yt-dlp (age-gated/private rooms)
+      --cookies-from-browser SPEC  load persistent login from a browser
+                         (e.g. chrome, chrome:Default, edge, firefox)
       --list         list yt-dlp formats and exit
       --no-yt-dlp    treat the target as a direct media URL
       --selftest P   headless: wait for a real frame, render it to PNG P, exit
@@ -77,7 +85,8 @@ Keys:
 Notes:
   Twitch playlist URLs are single-use, so the target is re-resolved on every reconnect.
   First-frame latency is dominated by the CDN (measured ~9 s on Twitch), not by us.
-  --cookies goes to yt-dlp only; ffmpeg fetches the CDN URLs it returns without them.
+  --cookies / --cookies-from-browser go to yt-dlp only; ffmpeg fetches the CDN URLs
+  it returns without them. Example: --cookies-from-browser chrome
 `;
 
 interface Options {
@@ -91,6 +100,8 @@ interface Options {
   noYtDlp: boolean;
   /** Netscape cookie jar for yt-dlp; "" for none. */
   cookies: string;
+  /** Browser spec for yt-dlp --cookies-from-browser; "" for none. */
+  cookiesFromBrowser: string;
   list: boolean;
   help: boolean;
   /** Self-test: PNG output path, or "" for off. */
@@ -110,6 +121,7 @@ function parseArgs(argv: string[]): Options | null {
     fit: false,
     noYtDlp: false,
     cookies: "",
+    cookiesFromBrowser: "",
     list: false,
     help: false,
     selftest: "",
@@ -126,11 +138,23 @@ function parseArgs(argv: string[]): Options | null {
     else if (a === "--cookies") {
       const path = argv[++i];
       if (path === undefined || path.startsWith("-")) {
-        process.stderr.write("stream: --cookies needs a Netscape cookies.txt path\n");
+        process.stderr.write(
+          "stream: --cookies needs a Netscape cookies.txt path\n",
+        );
         return null;
       }
       o.cookies = path;
-    } else if (a === "--selftest") o.selftest = argv[++i] ?? "stream-selftest.png";
+    } else if (a === "--cookies-from-browser") {
+      const spec = argv[++i];
+      if (spec === undefined || spec.startsWith("-")) {
+        process.stderr.write(
+          "stream: --cookies-from-browser needs a browser spec (e.g. chrome, edge, firefox)\n",
+        );
+        return null;
+      }
+      o.cookiesFromBrowser = spec;
+    } else if (a === "--selftest")
+      o.selftest = argv[++i] ?? "stream-selftest.png";
     else if (a === "--wait") o.wait = Number(argv[++i]);
     else if (a === "--fps") o.fps = Number(argv[++i]);
     else if (a === "--retries") {
@@ -140,7 +164,9 @@ function parseArgs(argv: string[]): Options | null {
     } else if (a === "-s" || a === "--size") {
       const m = /^(\d+)x(\d+)$/i.exec(argv[++i] ?? "");
       if (m === null) {
-        process.stderr.write("stream: bad --size (expected WxH, e.g. 640x360)\n");
+        process.stderr.write(
+          "stream: bad --size (expected WxH, e.g. 640x360)\n",
+        );
         return null;
       }
       o.width = Number(m[1]);
@@ -186,7 +212,12 @@ async function main(): Promise<void> {
 
   const target = opts.noYtDlp ? opts.target : normalizeTarget(opts.target);
   /** yt-dlp options shared by the initial resolve, --list and every reconnect. */
-  const resolveOpts: ResolveOptions = opts.cookies === "" ? {} : { cookiesFile: opts.cookies };
+  const resolveOpts: ResolveOptions = {
+    ...(opts.cookies === "" ? {} : { cookiesFile: opts.cookies }),
+    ...(opts.cookiesFromBrowser === ""
+      ? {}
+      : { cookiesFromBrowser: opts.cookiesFromBrowser }),
+  };
 
   if (opts.list) {
     const rows = await listFormats(target, resolveOpts);
@@ -236,7 +267,9 @@ async function main(): Promise<void> {
         sources = await waitForOnline(target, {
           ...resolveOpts,
           onWait: (attempt, err) => {
-            say(`stream: ${err.kind} - ${err.detail} (retry in 10s, attempt ${attempt})`);
+            say(
+              `stream: ${err.kind} - ${err.detail} (retry in 10s, attempt ${attempt})`,
+            );
           },
         });
         break;
@@ -308,7 +341,8 @@ async function main(): Promise<void> {
   const scheduleReconnect = (why: string): void => {
     if (quitting || reconnectAt > 0) return;
     // Capped exponential backoff: 1, 2, 4, 8, 16, 30, 30 … seconds.
-    const step = reconnectAttempt === 0 ? 1 : Math.min(30, 2 ** reconnectAttempt);
+    const step =
+      reconnectAttempt === 0 ? 1 : Math.min(30, 2 ** reconnectAttempt);
     reconnectAttempt++;
     reconnectDelayS = step;
     reconnectAt = Date.now() + step * 1000;
@@ -322,7 +356,8 @@ async function main(): Promise<void> {
       // Re-resolving is what recovers a dropped stream: the playlist URL we hold has
       // expired or started 404ing. Twitch issues single-use URLs. Skip it when the
       // target was vouched as directly openable, and skip it entirely for a local file.
-      if (!opts.noYtDlp) sources = await resolveStreamSources(target, resolveOpts);
+      if (!opts.noYtDlp)
+        sources = await resolveStreamSources(target, resolveOpts);
     } catch {
       // Keep the previous sources and let ffmpeg try; on failure we back off and retry.
     }
@@ -351,7 +386,9 @@ async function main(): Promise<void> {
         },
         onEnded: (reason) => {
           if (quitting) return;
-          scheduleReconnect(reason.startsWith("error") ? "error" : "stream ended");
+          scheduleReconnect(
+            reason.startsWith("error") ? "error" : "stream ended",
+          );
         },
         onError: (message) => {
           if (quitting) return;
@@ -407,7 +444,14 @@ async function main(): Promise<void> {
         await new Promise((r) => setTimeout(r, 25));
       }
     }
-    const L = ensureLut(columns, rows, opts.width, opts.height, opts.width * 4, false);
+    const L = ensureLut(
+      columns,
+      rows,
+      opts.width,
+      opts.height,
+      opts.width * 4,
+      false,
+    );
     renderFrame(grid, got.bytes, mode, L);
     const outPath = opts.selftest;
     await Bun.write(outPath, grid.toPNG());
@@ -437,17 +481,34 @@ async function main(): Promise<void> {
 
   const drawOverlay = (t: CharTerm, fps: number): void => {
     const y = t.rows - 1;
-    const audio = audioConfirmed ? (muted ? "♪mute" : `♪${Math.round(volume * 100)}%`) : "♪off";
+    const audio = audioConfirmed
+      ? muted
+        ? "♪mute"
+        : `♪${Math.round(volume * 100)}%`
+      : "♪off";
     const left = ` ${target} ${opts.width}x${opts.height} · ${
       mode === "half" ? "HALF" : "ASCII"
     } · ${audio} · ${latencyMs > 0 ? `${(latencyMs / 1000).toFixed(1)}s` : "…"} · ${paused ? "[PAUSED] " : ""}${status}`;
-    const right = status === "live" ? "SPACE m r a +/- [ ] s ESC " : "SPACE r ESC ";
+    const right =
+      status === "live" ? "SPACE m r a +/- [ ] s ESC " : "SPACE r ESC ";
     t.fillRect(0, y, t.columns, 1, BAR_BG);
-    t.text(0, y, left.slice(0, Math.max(0, t.columns - right.length - 1)), LABEL, BAR_BG, true);
+    t.text(
+      0,
+      y,
+      left.slice(0, Math.max(0, t.columns - right.length - 1)),
+      LABEL,
+      BAR_BG,
+      true,
+    );
     const rx = Math.max(0, t.columns - right.length);
     if (rx > left.length) t.text(rx, y, right, DIM, BAR_BG);
 
-    const fc: RGB = fps >= 50 ? [120, 255, 140] : fps >= 25 ? [255, 200, 90] : [255, 110, 110];
+    const fc: RGB =
+      fps >= 50
+        ? [120, 255, 140]
+        : fps >= 25
+          ? [255, 200, 90]
+          : [255, 110, 110];
     const fl = ` ${fps.toFixed(0).padStart(3)} FPS `;
     const fx = Math.max(0, t.columns - fl.length);
     t.fillRect(fx, 0, fl.length, 1, [22, 22, 30]);
@@ -501,7 +562,14 @@ async function main(): Promise<void> {
             status = "live";
           }
           // rawvideo/bgra is tightly packed and top-down: stride = width*4, no flip.
-          const L = ensureLut(t.columns, t.rows, opts.width, opts.height, opts.width * 4, false);
+          const L = ensureLut(
+            t.columns,
+            t.rows,
+            opts.width,
+            opts.height,
+            opts.width * 4,
+            false,
+          );
           renderFrame(t, f.bytes, mode, L);
           const inst = dt > 0 ? 1 / dt : opts.fps;
           fpsEma = fpsEma === 0 ? inst : fpsEma * 0.9 + inst * 0.1;

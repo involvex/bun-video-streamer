@@ -41,7 +41,12 @@ describe("normalizeToken", () => {
 describe("parseCommand", () => {
   test("--stream is consumed and never forwarded", () => {
     // The exact failing command line from the bug report.
-    const { command, rest } = parseCommand(["--stream", URL_, "--cookies", JAR]);
+    const { command, rest } = parseCommand([
+      "--stream",
+      URL_,
+      "--cookies",
+      JAR,
+    ]);
     expect(command).toBe("stream");
     expect(rest).toEqual([URL_, "--cookies", JAR]);
     expect(rest).not.toContain("--stream");
@@ -64,7 +69,11 @@ describe("parseCommand", () => {
 
   test("only the FIRST command token is consumed", () => {
     // A target may legitimately contain the word; the second one stays untouched.
-    const { command, rest } = parseCommand(["stream", "chaturbate/stream", "--list"]);
+    const { command, rest } = parseCommand([
+      "stream",
+      "chaturbate/stream",
+      "--list",
+    ]);
     expect(command).toBe("stream");
     expect(rest).toEqual(["chaturbate/stream", "--list"]);
   });
@@ -123,7 +132,9 @@ describe("firstTarget", () => {
   test("finds the target and skips option values", () => {
     expect(firstTarget([URL_, "--cookies", JAR])).toBe(URL_);
     expect(firstTarget(["--cookies", JAR, URL_])).toBe(URL_);
-    expect(firstTarget(["--size", "640x360", "twitch.tv/aidamoodi"])).toBe("twitch.tv/aidamoodi");
+    expect(firstTarget(["--size", "640x360", "twitch.tv/aidamoodi"])).toBe(
+      "twitch.tv/aidamoodi",
+    );
   });
 
   test("returns undefined when there is nothing positional", () => {
@@ -139,11 +150,25 @@ describe("firstTarget", () => {
     expect(firstTarget(["--cookies", JAR])).toBeUndefined();
     expect(firstTarget([URL_, "--cookies", JAR])).toBe(URL_);
   });
+
+  test("a --cookies-from-browser spec is a value, never the target", () => {
+    expect(firstTarget(["--cookies-from-browser", "chrome"])).toBeUndefined();
+    expect(firstTarget([URL_, "--cookies-from-browser", "chrome"])).toBe(URL_);
+  });
 });
 
 describe("isValueFlag", () => {
   test("covers every value-taking flag stream.ts parses", () => {
-    for (const f of ["cookies", "size", "s", "fps", "wait", "selftest", "retries"]) {
+    for (const f of [
+      "cookies",
+      "cookies-from-browser",
+      "size",
+      "s",
+      "fps",
+      "wait",
+      "selftest",
+      "retries",
+    ]) {
       expect(isValueFlag(f)).toBe(true);
     }
     for (const f of ["fit", "no-audio", "quiet", "list", "no-yt-dlp", "help"]) {

@@ -39,6 +39,32 @@ describe("buildResolveArgs", () => {
     expect(args[i + 1]).toBe("out/cookies.txt");
   });
 
+  test("emits --cookies-from-browser <spec> when given", () => {
+    const args = buildResolveArgs({ cookiesFromBrowser: "chrome" });
+    const i = args.indexOf("--cookies-from-browser");
+    expect(i).toBeGreaterThanOrEqual(0);
+    expect(args[i + 1]).toBe("chrome");
+    expect(args).not.toContain("--cookies");
+  });
+
+  test("a blank browser spec is dropped, not forwarded", () => {
+    expect(buildResolveArgs({ cookiesFromBrowser: "" })).not.toContain(
+      "--cookies-from-browser",
+    );
+    expect(buildResolveArgs({ cookiesFromBrowser: "   " })).not.toContain(
+      "--cookies-from-browser",
+    );
+  });
+
+  test("browser spec and jar file combine when both are given", () => {
+    const args = buildResolveArgs({
+      cookiesFromBrowser: "chrome",
+      cookiesFile: "out/cookies.txt",
+    });
+    expect(args).toContain("--cookies-from-browser");
+    expect(args).toContain("--cookies");
+  });
+
   test("keeps -g/--no-playlist/-f and the chaturbate-capable selector", () => {
     const args = buildResolveArgs();
     expect(args.slice(0, 2)).toEqual(["-g", "--no-playlist"]);
@@ -51,7 +77,9 @@ describe("buildResolveArgs", () => {
     // said "Requested format is not available" for a model who was live.
     const arms = DEFAULT_FORMAT_SELECTOR.split("/");
     expect(arms).toHaveLength(3);
-    expect(arms.some((a) => a.includes("bestvideo") && a.includes("bestaudio"))).toBe(true);
+    expect(
+      arms.some((a) => a.includes("bestvideo") && a.includes("bestaudio")),
+    ).toBe(true);
     // `best` alone must remain the LAST resort, never the first choice.
     expect(arms[arms.length - 1]).toBe("best");
   });
@@ -95,7 +123,11 @@ describe("normalizeTarget", () => {
     expect(normalizeTarget("chaturbate/iren_wagner")).toBe(
       "https://de.chaturbate.com/iren_wagner/",
     );
-    expect(normalizeTarget("twitch.tv/aidamoodi")).toBe("https://www.twitch.tv/aidamoodi");
-    expect(normalizeTarget("https://example.com/live.m3u8")).toBe("https://example.com/live.m3u8");
+    expect(normalizeTarget("twitch.tv/aidamoodi")).toBe(
+      "https://www.twitch.tv/aidamoodi",
+    );
+    expect(normalizeTarget("https://example.com/live.m3u8")).toBe(
+      "https://example.com/live.m3u8",
+    );
   });
 });

@@ -13,6 +13,7 @@
     "build": "bun build --compile --outfile dist/bun-stream.exe src/index.ts",
     "video": "bun src/video.ts",
     "stream": "bun src/stream.ts",
+    "cookies": "bun scripts/export-cookies.ts",
     "test": "bun test",
     "typecheck": "bun scripts/typecheck.ts",
     "format": "bunx oxfmt .",

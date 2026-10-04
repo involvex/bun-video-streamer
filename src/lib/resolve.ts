@@ -53,6 +53,8 @@
  * Used by the ffmpeg-backed CLI; see `video.ts` for the decoder side.
  */
 
+import { tryStripchatFallback } from "./stripchat";
+
 // ── Direct-media detection ─────────────────────────────────────────────────────────
 
 /** Extensions that identify something ffmpeg can open as-is. */
@@ -83,7 +85,8 @@ function pathOf(url: string): string {
   const withoutFragment = url.split("#")[0] ?? "";
   const withoutQuery = withoutFragment.split("?")[0] ?? "";
   const schemeEnd = withoutQuery.indexOf("://");
-  const afterScheme = schemeEnd === -1 ? withoutQuery : withoutQuery.slice(schemeEnd + 3);
+  const afterScheme =
+    schemeEnd === -1 ? withoutQuery : withoutQuery.slice(schemeEnd + 3);
   const slash = afterScheme.indexOf("/");
   return slash === -1 ? afterScheme : afterScheme.slice(slash);
 }
@@ -210,7 +213,9 @@ export function cleanYtdlpMessage(stderr: string): string {
     .map((line) => line.trim())
     .filter((line) => line !== "");
   for (const line of lines) {
-    const match = /^ERROR:\s*(?:\[[^\]]*\]\s*)?(?:[^:\s]+:\s*)?(.*)$/i.exec(line);
+    const match = /^ERROR:\s*(?:\[[^\]]*\]\s*)?(?:[^:\s]+:\s*)?(.*)$/i.exec(
+      line,
+    );
     const detail = (match?.[1] ?? "").trim();
     if (detail !== "") return detail;
   }
@@ -230,7 +235,8 @@ export function classifyFailure(stderr: string): ResolveErrorKind {
   const haystack = stripAnsi(stderr).toLowerCase();
   if (GEO_PATTERNS.some((pattern) => pattern.test(haystack))) return "geo";
   if (AUTH_PATTERNS.some((pattern) => pattern.test(haystack))) return "auth";
-  if (OFFLINE_PATTERNS.some((pattern) => pattern.test(haystack))) return "offline";
+  if (OFFLINE_PATTERNS.some((pattern) => pattern.test(haystack)))
+    return "offline";
   return "unknown";
 }
 
@@ -270,7 +276,8 @@ function humanSentence(init: ResolveErrorInit): string {
     case "geo":
       return `${label} is geo-blocked in this region${because}`;
     default: {
-      const code = init.exitCode === null ? "" : ` (yt-dlp exit ${init.exitCode})`;
+      const code =
+        init.exitCode === null ? "" : ` (yt-dlp exit ${init.exitCode})`;
       return `could not resolve ${label}${code}${because}`;
     }
   }
@@ -317,7 +324,9 @@ export function isResolveError(error: unknown): error is ResolveError {
   return error instanceof ResolveError;
 }
 
-export function isResolveAbortedError(error: unknown): error is ResolveAbortedError {
+export function isResolveAbortedError(
+  error: unknown,
+): error is ResolveAbortedError {
   return error instanceof ResolveAbortedError;
 }
 
@@ -341,7 +350,8 @@ export const DEFAULT_YTDLP_BINARY = "yt-dlp";
  * The final bare `best` is the last resort so a site with only low/unlabelled variants
  * still resolves instead of erroring.
  */
-export const DEFAULT_FORMAT_SELECTOR = "best[height<=720]/bestvideo[height<=720]+bestaudio/best";
+export const DEFAULT_FORMAT_SELECTOR =
+  "best[height<=720]/bestvideo[height<=720]+bestaudio/best";
 
 export interface ResolveOptions {
   /** Cancels the in-flight invocation; the child is killed, never orphaned. */
@@ -359,30 +369,55 @@ export interface ResolveOptions {
    * VALUES, not a Netscape file, so passing the path there would silently do nothing.)
    */
   cookiesFile?: string;
+  /**
+   * Browser to load cookies from, passed to yt-dlp as
+   * `--cookies-from-browser <spec>` (e.g. `"chrome"`, `"chrome:Default"`,
+   * `"edge"`, `"firefox"`).
+   *
+   * This reads the persistent login directly from the installed browser's
+   * cookie store (DPAPI on Windows, same user) — no manual jar export needed.
+   * When both this and `cookiesFile` are set, both flags are forwarded and
+   * yt-dlp merges the sources (and dumps the jar back to `cookiesFile`).
+   * See https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp
+   */
+  cookiesFromBrowser?: string;
 }
 
 /**
- * `--cookies <path>`, or nothing when no jar was given.
+ * `--cookies-from-browser <spec>` and/or `--cookies <path>`, or nothing.
  *
- * A missing/blank path is dropped rather than forwarded: `--cookies ""` makes yt-dlp
+ * A missing/blank jar path is dropped rather than forwarded: `--cookies ""` makes yt-dlp
  * try to parse an empty file and fail with a confusing error, which is worse than
  * resolving anonymously and getting an honest "offline" from the site.
+ * Same for a blank browser spec.
  */
 function cookieArgs(opts: ResolveOptions): string[] {
+  const out: string[] = [];
+  const browser = opts.cookiesFromBrowser?.trim();
+  if (browser !== undefined && browser !== "")
+    out.push("--cookies-from-browser", browser);
   const jar = opts.cookiesFile?.trim();
-  return jar === undefined || jar === "" ? [] : ["--cookies", jar];
+  if (jar !== undefined && jar !== "") out.push("--cookies", jar);
+  return out;
 }
 
 /**
  * The `yt-dlp -g` argv, up to but excluding the target URL. Pure, so the cookie and
  * format-selector wiring is unit-testable without spawning anything.
  *
- * `--cookies` is a yt-dlp GLOBAL option, so its position among the other globals is
- * irrelevant — but it must land before the URL, otherwise yt-dlp treats the jar path as
- * a second URL and reports "ERROR: unable to download webpage".
+ * `--cookies` / `--cookies-from-browser` are yt-dlp GLOBAL options, so their position
+ * among the other globals is irrelevant — but they must land before the URL, otherwise
+ * yt-dlp treats the jar path/spec as a second URL and reports
+ * "ERROR: unable to download webpage".
  */
 export function buildResolveArgs(opts: ResolveOptions = {}): string[] {
-  return ["-g", "--no-playlist", ...cookieArgs(opts), "-f", DEFAULT_FORMAT_SELECTOR];
+  return [
+    "-g",
+    "--no-playlist",
+    ...cookieArgs(opts),
+    "-f",
+    DEFAULT_FORMAT_SELECTOR,
+  ];
 }
 
 interface YtdlpRun {
@@ -394,7 +429,10 @@ interface YtdlpRun {
 /** `signal.reason` when it carries one, so the caller's own message survives. */
 function abortError(signal: AbortSignal): ResolveAbortedError {
   const reason: unknown = signal.reason;
-  const message = reason instanceof Error && reason.message !== "" ? reason.message : "aborted";
+  const message =
+    reason instanceof Error && reason.message !== ""
+      ? reason.message
+      : "aborted";
   return reason instanceof Error
     ? new ResolveAbortedError(message, { cause: reason })
     : new ResolveAbortedError(message);
@@ -415,7 +453,10 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
  * (so the handle is reaped and cannot outlive the call) but not awaited, so cancelling
  * never blocks on a process that may be wedged in a socket read.
  */
-async function runYtdlp(args: string[], opts: ResolveOptions): Promise<YtdlpRun> {
+async function runYtdlp(
+  args: string[],
+  opts: ResolveOptions,
+): Promise<YtdlpRun> {
   const signal = opts.signal;
   throwIfAborted(signal);
 
@@ -474,11 +515,15 @@ export function parseSourceUrls(stdout: string): StreamSources | null {
   // A second URL is only trustworthy as the AUDIO track if it differs from the first;
   // a duplicate line means the extractor echoed the same muxed URL twice.
   const second = urls[1];
-  return second === undefined || second === video ? { video } : { video, audio: second };
+  return second === undefined || second === video
+    ? { video }
+    : { video, audio: second };
 }
 
 function errorText(error: unknown): string {
-  return error instanceof Error && error.message !== "" ? error.message : String(error);
+  return error instanceof Error && error.message !== ""
+    ? error.message
+    : String(error);
 }
 
 /** yt-dlp missing from PATH, ENOENT, EPERM… anything that went wrong before it could talk. */
@@ -562,7 +607,17 @@ export async function resolveStreamSources(
     const sources = parseSourceUrls(run.stdout);
     if (sources !== null) return sources;
   }
-  throw classifyRun(normalized, run);
+  const failure = classifyRun(normalized, run);
+  // Stripchat serves a stale `show` object after a private/p2p show ends while the
+  // model is already public again — yt-dlp then reports "private show" (or, logged
+  // in, the locale-subdomain JS shell has no preloaded state at all: "Unable to
+  // extract data"). The fallback re-checks the page state itself; when inconclusive
+  // it returns null and the ORIGINAL error below is what the caller sees.
+  const stripchat = await tryStripchatFallback(normalized, {
+    signal: opts.signal,
+  });
+  if (stripchat !== null) return stripchat;
+  throw failure;
 }
 
 // ── Polling until the performer shows up ─────────────────────────────────────────────
@@ -708,7 +763,8 @@ function parseFormatRow(line: string): FormatRow | null {
     if (SHAPE_RESOLUTION.test(head)) {
       resolution = head;
       const maybeFps = rest[1];
-      if (maybeFps !== undefined && SHAPE_FPS.test(maybeFps)) fps = Number(maybeFps);
+      if (maybeFps !== undefined && SHAPE_FPS.test(maybeFps))
+        fps = Number(maybeFps);
     } else if (SHAPE_FPS.test(head)) {
       fps = Number(head); // RESOLUTION column hidden by hide_empty
     } else {
@@ -778,7 +834,10 @@ export function parseFormatRows(output: string): FormatRow[] {
  *
  * @throws {ResolveError} classified the same way as `resolveStreamSources`.
  */
-export async function listFormats(target: string, opts: ResolveOptions = {}): Promise<FormatRow[]> {
+export async function listFormats(
+  target: string,
+  opts: ResolveOptions = {},
+): Promise<FormatRow[]> {
   const normalized = normalizeTarget(target);
   if (normalized === "") {
     throw new ResolveError({ kind: "unknown", target, detail: "empty target" });

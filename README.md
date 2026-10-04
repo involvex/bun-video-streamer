@@ -30,6 +30,28 @@ CDN URLs it returns carry their own `?session=` token, so ffmpeg fetches them fi
 without cookies.
 
 ```bash
+bun run cookies --browser firefox --out out/cookies.txt   # yt-dlp reads the store itself
+```
+
+Chrome 127+ (incl. your Chrome 154) encrypts its store so yt-dlp answers
+`Failed to decrypt with DPAPI` (yt-dlp#10927). For Chrome, keep one persistent
+automation profile and export over CDP instead — log in once, headed, then
+re-export headless any time:
+
+```bash
+bun run cookies --browser chrome --out out/cookies.txt --via cdp \
+  --url https://chaturbate.com/ --url https://stripchat.com/ --login
+bun run cookies --browser chrome --out out/cookies.txt --via cdp   # re-export later
+```
+
+Or skip the file and let yt-dlp read the browser directly
+(same Chrome limitation applies):
+
+```bash
+bun run stream chaturbate/iren_wagner --cookies-from-browser firefox
+```
+
+```bash
 bun test           # unit tests
 bun run typecheck
 bun run format
