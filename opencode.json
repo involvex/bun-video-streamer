@@ -1,0 +1,12 @@
+{
+  "mcp": {
+    "servers": {
+      "bunwright": {
+        "type": "local",
+        "command": [
+          "bunwright-mcp"
+        ]
+      }
+    }
+  }
+}

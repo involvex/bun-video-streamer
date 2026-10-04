@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "bun-webview": {
+      "source": "involvex/bunwright",
+      "sourceType": "github",
+      "skillPath": "skills/bun-webview/SKILL.md",
+      "computedHash": "edc10f7ee4fd191d0a07292c953ccf58d2b81a65b5f1fc04f99d9dd42b6242e3"
+    },
+    "bunwright": {
+      "source": "involvex/bunwright",
+      "sourceType": "github",
+      "skillPath": "skills/bunwright/SKILL.md",
+      "computedHash": "aa61568143aa65907dd20f543cea791b13e699855d43de345f529d56d0ef521d"
+    }
+  }
+}
