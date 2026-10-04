@@ -20,7 +20,7 @@
  *    `stream --cookies <jar>` path — or skip the file and use
  *    `stream --cookies-from-browser <spec>` directly (same limitation applies).
  *
- *  --via cdp: launch system Chrome against a DEDICATED automation profile
+ *  --via cdp: launch system Chrome/Edge (--browser picks the flavour) against a DEDICATED
  *    (`--user-data-dir`, never your main profile — it would be locked anyway),
  *    log in once headed (`--login`), then read the PLAINTEXT cookies over CDP
  *    (`Network.getAllCookies`) and write the Netscape jar ourselves. Chrome
@@ -48,8 +48,11 @@ ytdlp mode (default; broken on Chrome/Edge 127+ — see header):
   --binary BIN     yt-dlp executable (default yt-dlp from PATH)
 
 cdp mode (for current Chrome/Edge; dedicated automation profile):
-  --profile-dir D  Chrome --user-data-dir (default out/chrome-profile)
-  --chrome EXE     explicit browser executable
+  --profile-dir D  browser --user-data-dir (default out/chrome-profile,
+                   out/edge-profile when --browser edge)
+  --chrome EXE     explicit browser executable (default: auto-detect,
+                   CHROME_PATH / EDGE_PATH win over the install scan)
+  --browser B    chromium flavour to LAUNCH: chrome (default), edge, brave, ...
   --port N         remote-debugging port (default 19327)
   --url URL        page to visit before export, so its cookies exist (repeatable)
   --wait S         seconds to let pages settle before export (default 8)
@@ -61,6 +64,8 @@ Examples:
   bun scripts/export-cookies.ts --browser chrome --out out/cookies.txt --via cdp \\
     --url https://chaturbate.com/ --url https://stripchat.com/ --login
   bun scripts/export-cookies.ts --browser chrome --out out/cookies.txt --via cdp --check chaturbate/iren_wagner
+bun scripts/export-cookies.ts --browser edge --out out/cookies.txt --via cdp \\
+  --url https://chaturbate.com/ --url https://stripchat.com/ --login
 `;
 
 interface Args {
@@ -88,7 +93,7 @@ function parseArgs(argv: string[]): Args | null {
     check: "",
     binary: "yt-dlp",
     via: "ytdlp",
-    profileDir: "out/chrome-profile",
+    profileDir: "",
     chrome: "",
     port: 19327,
     wait: 8,
@@ -132,9 +137,7 @@ function fail(msg: string): never {
   process.exit(1);
 }
 
-async function run(
-  cmd: string[],
-): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+async function run(cmd: string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const proc = Bun.spawn(cmd, {
     stdin: "ignore",
     stdout: "pipe",
@@ -187,12 +190,9 @@ function jarStats(text: string): {
   chaturbate: number;
   stripchat: number;
 } {
-  const lines = text
-    .split(/\r?\n/)
-    .filter((l) => l !== "" && !l.startsWith("#"));
+  const lines = text.split(/\r?\n/).filter((l) => l !== "" && !l.startsWith("#"));
   const hits = (d: string): number =>
-    lines.filter((l) => (l.split("\t")[0] ?? "").toLowerCase().includes(d))
-      .length;
+    lines.filter((l) => (l.split("\t")[0] ?? "").toLowerCase().includes(d)).length;
   return {
     count: lines.length,
     chaturbate: hits("chaturbate"),
@@ -202,14 +202,33 @@ function jarStats(text: string): {
 
 // ── --via ytdlp ──────────────────────────────────────────────────────────────
 
+/**
+ * Human-readable follow-up for a failed `yt-dlp --cookies-from-browser` dump.
+ * Pure, so the wording for each known failure is unit-tested.
+ */
+export function cookieDumpHint(stderr: string): string {
+  if (/decrypt with DPAPI/i.test(stderr)) {
+    return (
+      " — Chrome/Edge 127+ use App-Bound encryption yt-dlp cannot read" +
+      " (yt-dlp#10927). Use --via cdp with a dedicated profile, or --browser firefox."
+    );
+  }
+  if (/could not copy .*cookie database/i.test(stderr)) {
+    return (
+      " — the browser's cookie store is locked (usually: the browser is still" +
+      " running, see yt-dlp#7271). Close ALL browser windows and retry, or" +
+      " sidestep it with --via cdp, which uses a dedicated profile instead."
+    );
+  }
+  return "";
+}
+
 async function exportViaYtDlp(args: Args, spec: string): Promise<string> {
   // A URL is required to make yt-dlp run its extraction (which is what triggers the
   // jar dump). --skip-download keeps it cheap: no media is fetched.
   const url = args.urls[0] ?? "https://www.youtube.com/";
   if (args.urls.length === 0) {
-    process.stderr.write(
-      "export-cookies: no --url given, dumping via a skipped YouTube lookup\n",
-    );
+    process.stderr.write("export-cookies: no --url given, dumping via a skipped YouTube lookup\n");
   }
   const dump = await run([
     args.binary,
@@ -225,11 +244,7 @@ async function exportViaYtDlp(args: Args, spec: string): Promise<string> {
   if (dump.exitCode !== 0) {
     const line = dump.stderr.split(/\r?\n/).find((l) => /ERROR/i.test(l)) ?? "";
     let hint = line.trim();
-    if (/decrypt with DPAPI/i.test(dump.stderr)) {
-      hint +=
-        " — Chrome/Edge 127+ use App-Bound encryption yt-dlp cannot read" +
-        " (yt-dlp#10927). Use --via cdp with a dedicated profile, or --browser firefox.";
-    }
+    hint += cookieDumpHint(dump.stderr);
     fail(`yt-dlp dump failed (exit ${dump.exitCode}): ${hint}`);
   }
   return args.out;
@@ -237,23 +252,57 @@ async function exportViaYtDlp(args: Args, spec: string): Promise<string> {
 
 // ── --via cdp ────────────────────────────────────────────────────────────────
 
-function chromeCandidates(): string[] {
-  const env = process.env.CHROME_PATH?.trim();
-  const list = [
-    ...(env === undefined || env === "" ? [] : [env]),
+export function browserCandidates(browser: string): string[] {
+  const flavour = browser.trim().toLowerCase().split(":")[0];
+  const local = process.env.LOCALAPPDATA ?? "";
+  const chrome = [
     "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-    `${process.env.LOCALAPPDATA ?? ""}\\Google\\Chrome\\Application\\chrome.exe`,
+    "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+    `${local}\\Google\\Chrome\\Application\\chrome.exe`,
   ];
-  return list.filter((p) => p !== "");
+  const edge = [
+    "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+    "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+    `${local}\\Microsoft\\Edge\\Application\\msedge.exe`,
+  ];
+  const env = (name: string): string[] => {
+    const v = (process.env[name] ?? "").trim();
+    return v === "" ? [] : [v];
+  };
+  // Empty/unknown flavour scans Chrome first, then Edge — the common laptop
+  // case is "whichever Chromium is installed".
+  const list =
+    flavour === "edge"
+      ? [...env("EDGE_PATH"), ...edge, ...chrome]
+      : [...env("CHROME_PATH"), ...env("EDGE_PATH"), ...chrome, ...edge];
+  return list.filter((p) => p !== "" && !p.startsWith("\\"));
 }
 
-async function resolveChrome(explicit: string): Promise<string> {
-  for (const p of chromeCandidates()) {
-    if (explicit !== "" && p !== explicit) continue;
+export function defaultProfileDir(browser: string): string {
+  return browser.trim().toLowerCase().split(":")[0] === "edge"
+    ? "out/edge-profile"
+    : "out/chrome-profile";
+}
+
+async function resolveBrowserExe(browser: string, explicit: string): Promise<string> {
+  if (explicit !== "") {
+    if (await Bun.file(explicit).exists()) return explicit;
+    fail(`browser executable not found at ${explicit}`);
+  }
+  for (const p of browserCandidates(browser)) {
     if (await Bun.file(p).exists()) return p;
   }
-  if (explicit !== "") fail(`chrome not found at ${explicit}`);
-  return "chrome"; // fall back to PATH
+  const pathNames =
+    browser.trim().toLowerCase().split(":")[0] === "edge"
+      ? ["msedge", "chrome"]
+      : ["chrome", "msedge"];
+  for (const name of pathNames) {
+    if (Bun.which(name) !== null) return name;
+  }
+  fail(
+    `no ${browser.trim() === "" ? "Chrome/Edge" : browser} executable found` +
+      ` (tried ${browserCandidates(browser).join(", ")}). Use --chrome <path>.`,
+  );
 }
 
 async function waitForDebugger(port: number, timeoutMs: number): Promise<void> {
@@ -265,8 +314,7 @@ async function waitForDebugger(port: number, timeoutMs: number): Promise<void> {
     } catch {
       /* not up yet */
     }
-    if (Date.now() >= deadline)
-      fail(`chrome DevTools did not answer on port ${port}`);
+    if (Date.now() >= deadline) fail(`chrome DevTools did not answer on port ${port}`);
     await new Promise((r) => setTimeout(r, 250));
   }
 }
@@ -277,12 +325,9 @@ interface CdpTarget {
 }
 
 async function newPage(port: number, url: string): Promise<CdpTarget> {
-  const res = await fetch(
-    `http://127.0.0.1:${port}/json/new?${encodeURIComponent(url)}`,
-    {
-      method: "PUT",
-    },
-  );
+  const res = await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(url)}`, {
+    method: "PUT",
+  });
   if (!res.ok) fail(`could not open ${url} (HTTP ${res.status})`);
   return (await res.json()) as CdpTarget;
 }
@@ -300,9 +345,7 @@ function getAllCookies(wsUrl: string, timeoutMs: number): Promise<CdpCookie[]> {
       reject(new Error("CDP getAllCookies timed out"));
     }, timeoutMs);
     ws.addEventListener("open", () => {
-      ws.send(
-        JSON.stringify({ id: 1, method: "Network.getAllCookies", params: {} }),
-      );
+      ws.send(JSON.stringify({ id: 1, method: "Network.getAllCookies", params: {} }));
     });
     ws.addEventListener("message", (ev) => {
       let msg: any;
@@ -318,8 +361,7 @@ function getAllCookies(wsUrl: string, timeoutMs: number): Promise<CdpCookie[]> {
       } catch {
         /* already closed */
       }
-      if (msg.error !== undefined)
-        reject(new Error(`CDP: ${msg.error.message ?? "unknown"}`));
+      if (msg.error !== undefined) reject(new Error(`CDP: ${msg.error.message ?? "unknown"}`));
       else resolve((msg.result?.cookies ?? []) as CdpCookie[]);
     });
     ws.addEventListener("error", () => {
@@ -332,14 +374,11 @@ function getAllCookies(wsUrl: string, timeoutMs: number): Promise<CdpCookie[]> {
 function killTree(proc: { pid?: number; kill: () => void }): void {
   // Chrome spawns children that outlive the parent; /T takes the whole tree on Windows.
   if (process.platform === "win32" && proc.pid !== undefined) {
-    const killer = Bun.spawn(
-      ["taskkill", "/F", "/T", "/PID", String(proc.pid)],
-      {
-        stdin: "ignore",
-        stdout: "ignore",
-        stderr: "ignore",
-      },
-    );
+    const killer = Bun.spawn(["taskkill", "/F", "/T", "/PID", String(proc.pid)], {
+      stdin: "ignore",
+      stdout: "ignore",
+      stderr: "ignore",
+    });
     void killer.exited.catch(() => {});
     return;
   }
@@ -351,17 +390,35 @@ function killTree(proc: { pid?: number; kill: () => void }): void {
 }
 
 async function exportViaCdp(args: Args): Promise<string> {
-  const exe = await resolveChrome(args.chrome.trim());
+  const flavour = args.browser.trim().toLowerCase().split(":")[0];
+  if (
+    flavour !== "" &&
+    flavour !== "chrome" &&
+    flavour !== "chromium" &&
+    flavour !== "edge" &&
+    flavour !== "brave" &&
+    flavour !== "vivaldi" &&
+    flavour !== "opera"
+  ) {
+    fail(
+      `--via cdp needs a Chromium browser, got --browser ${args.browser} (use --via ytdlp for firefox/safari)`,
+    );
+  }
+  const exe = await resolveBrowserExe(args.browser, args.chrome.trim());
   const port = Number.isInteger(args.port) && args.port > 0 ? args.port : 19327;
   const waitS = Number.isFinite(args.wait) && args.wait >= 0 ? args.wait : 8;
   // Chrome resolves --user-data-dir against its own cwd, NOT ours — a relative path
   // makes it fail with "kann im folgenden Datenverzeichnis weder lesen noch schreiben".
-  const profileDir = resolve(args.profileDir);
+  const profileDir = resolve(
+    args.profileDir === "" ? defaultProfileDir(args.browser) : args.profileDir,
+  );
+  process.stderr.write(`export-cookies: launching ${exe} with profile ${profileDir}\n`);
   const chrome = Bun.spawn(
     [
       exe,
       `--user-data-dir=${profileDir}`,
       `--remote-debugging-port=${port}`,
+      "--remote-debugging-address=127.0.0.1",
       "--no-first-run",
       "--no-default-browser-check",
       ...(args.login ? [] : ["--headless=new", "--disable-gpu"]),
@@ -410,11 +467,7 @@ async function exportViaCdp(args: Args): Promise<string> {
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   if (args === null) process.exit(1);
-  if (
-    args.help ||
-    args.out === "" ||
-    (args.via !== "cdp" && args.browser === "")
-  ) {
+  if (args.help || args.out === "" || (args.via !== "cdp" && args.browser === "")) {
     process.stdout.write(USAGE);
     process.exit(args.help ? 0 : 1);
   }
@@ -424,10 +477,7 @@ async function main(): Promise<void> {
   const out =
     args.via === "cdp"
       ? await exportViaCdp(args)
-      : await exportViaYtDlp(
-          args,
-          buildBrowserSpec(args.browser, args.profile),
-        );
+      : await exportViaYtDlp(args, buildBrowserSpec(args.browser, args.profile));
 
   const jar = Bun.file(out);
   if (!(await jar.exists())) fail(`export succeeded but no jar at ${out}`);
@@ -457,13 +507,10 @@ async function main(): Promise<void> {
       args.check,
     ]);
     if (check.exitCode !== 0) {
-      const line =
-        check.stderr.split(/\r?\n/).find((l) => /ERROR/i.test(l)) ?? "";
+      const line = check.stderr.split(/\r?\n/).find((l) => /ERROR/i.test(l)) ?? "";
       fail(`jar check failed for ${args.check}: ${line.trim()}`);
     }
-    const n = check.stdout
-      .split(/\r?\n/)
-      .filter((l) => /^https?:\/\//i.test(l.trim())).length;
+    const n = check.stdout.split(/\r?\n/).filter((l) => /^https?:\/\//i.test(l.trim())).length;
     process.stderr.write(`export-cookies: check OK ${args.check} urls=${n}\n`);
   }
 }

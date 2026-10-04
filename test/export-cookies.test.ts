@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { buildBrowserSpec, toNetscapeJar } from "../scripts/export-cookies";
+import {
+  browserCandidates,
+  buildBrowserSpec,
+  cookieDumpHint,
+  defaultProfileDir,
+  toNetscapeJar,
+} from "../scripts/export-cookies";
 
 describe("buildBrowserSpec", () => {
   test("plain browser passes through", () => {
@@ -87,5 +93,59 @@ describe("toNetscapeJar", () => {
 
   test("empty input is just the header", () => {
     expect(toNetscapeJar([])).toBe("# Netscape HTTP Cookie File\n");
+  });
+});
+
+describe("browserCandidates", () => {
+  test("edge scans msedge.exe install locations first", () => {
+    const list = browserCandidates("edge");
+    expect(list.length).toBeGreaterThan(0);
+    expect(list[0]!.toLowerCase()).toContain("msedge.exe");
+    expect(list.some((p) => p.includes("Program Files (x86)"))).toBe(true);
+  });
+
+  test("chrome scans chrome.exe locations, edge only as fallback", () => {
+    const list = browserCandidates("chrome");
+    expect(list[0]!.toLowerCase()).toContain("chrome.exe");
+    expect(list.some((p) => p.toLowerCase().includes("msedge.exe"))).toBe(true);
+    expect(list.indexOf(list.find((p) => p.toLowerCase().includes("msedge.exe"))!)).toBeGreaterThan(
+      0,
+    );
+  });
+
+  test("empty browser defaults to chrome-first, edge included", () => {
+    const list = browserCandidates("");
+    expect(list[0]!.toLowerCase()).toContain("chrome.exe");
+    expect(list.some((p) => p.toLowerCase().includes("msedge.exe"))).toBe(true);
+  });
+
+  test("embedded profile does not change the flavour scan", () => {
+    expect(browserCandidates("edge:Default")).toEqual(browserCandidates("edge"));
+  });
+});
+
+describe("defaultProfileDir", () => {
+  test("edge gets its own automation profile", () => {
+    expect(defaultProfileDir("edge")).toBe("out/edge-profile");
+    expect(defaultProfileDir("chrome")).toBe("out/chrome-profile");
+    expect(defaultProfileDir("")).toBe("out/chrome-profile");
+  });
+});
+
+describe("cookieDumpHint", () => {
+  test("DPAPI failure points at cdp and firefox", () => {
+    const hint = cookieDumpHint("ERROR: Failed to decrypt with DPAPI. See yt-dlp#10927");
+    expect(hint).toContain("--via cdp");
+    expect(hint).toContain("firefox");
+  });
+
+  test("locked cookie database points at closing the browser or cdp", () => {
+    const hint = cookieDumpHint("ERROR: Could not copy Chrome cookie database. See yt-dlp#7271");
+    expect(hint).toContain("--via cdp");
+    expect(hint).toMatch(/close/i);
+  });
+
+  test("unknown errors get no hint suffix", () => {
+    expect(cookieDumpHint("ERROR: something else broke")).toBe("");
   });
 });

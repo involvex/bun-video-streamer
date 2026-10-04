@@ -34,14 +34,18 @@ bun run cookies --browser firefox --out out/cookies.txt   # yt-dlp reads the sto
 ```
 
 Chrome 127+ (incl. your Chrome 154) encrypts its store so yt-dlp answers
-`Failed to decrypt with DPAPI` (yt-dlp#10927). For Chrome, keep one persistent
-automation profile and export over CDP instead — log in once, headed, then
-re-export headless any time:
+`Failed to decrypt with DPAPI` (yt-dlp#10927), and Edge dumps fail with
+`Could not copy Chrome cookie database` while the browser is running
+(yt-dlp#7271). For either, keep one persistent automation profile and
+export over CDP instead — log in once, headed, then
+re-export headless any time (`--browser` picks the flavour to launch):
 
 ```bash
 bun run cookies --browser chrome --out out/cookies.txt --via cdp \
   --url https://chaturbate.com/ --url https://stripchat.com/ --login
 bun run cookies --browser chrome --out out/cookies.txt --via cdp   # re-export later
+bun run cookies --browser edge --out out/cookies.txt --via cdp \
+  --url https://chaturbate.com/ --url https://stripchat.com/ --login
 ```
 
 Or skip the file and let yt-dlp read the browser directly
